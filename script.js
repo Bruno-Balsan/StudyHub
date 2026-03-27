@@ -1,133 +1,65 @@
-function removeAllModals() {
-    const modals = document.querySelectorAll('.modal');
-    modals.forEach(modal => modal.remove());
-}
-
-// ---------- CONFIGURAÇÕES ----------
-const STORAGE_KEYS = {
-    materials: 'studyhub_materials',
-    disciplines: 'studyhub_disciplines',
-    messages: 'studyhub_messages',
-    users: 'studyhub_users',
-    groups: 'studyhub_groups'
-};
-
-let disciplines = [];
-let materials = [];
-let messages = {};
-let users = [];
-let groups = [];
-
-let currentDisciplineId = null;
-let currentGroupId = null;
+// ==================== CONFIGURAÇÃO ====================
+const API_BASE_URL = 'https://studyhub-n4xn.onrender.com'; // ALTERE PARA SUA URL
 let currentUser = null;
+let currentGroupId = null;
+let currentDisciplineId = null;
+let messagesPollInterval = null; // para simular realtime (ou usar SSE)
 
-const ADMIN_USERNAME = "admin";
-const ADMIN_PASSWORD = "admin123";
-
-function saveAll() {
-    localStorage.setItem(STORAGE_KEYS.disciplines, JSON.stringify(disciplines));
-    localStorage.setItem(STORAGE_KEYS.materials, JSON.stringify(materials));
-    localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
-    localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
-    localStorage.setItem(STORAGE_KEYS.groups, JSON.stringify(groups));
+// ==================== AUXILIARES ====================
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
-function loadData() {
-    // Disciplinas
-    const storedDisc = localStorage.getItem(STORAGE_KEYS.disciplines);
-    if (storedDisc) {
-        disciplines = JSON.parse(storedDisc);
-    } else {
-        disciplines = [
-            { id: "disc1", name: "Matemática" },
-            { id: "disc2", name: "Física" },
-            { id: "disc3", name: "Química" },
-            { id: "disc4", name: "Biologia" }
-        ];
-    }
+function removeAllModals() {
+    document.querySelectorAll('.modal').forEach(modal => modal.remove());
+}
 
-    // Materiais
-    const storedMat = localStorage.getItem(STORAGE_KEYS.materials);
-    if (storedMat) {
-        materials = JSON.parse(storedMat);
-    } else {
-        materials = [
-            { id: "mat1", disciplineId: "disc1", title: "Slides - Funções", type: "slides", linkOrDesc: "https://exemplo.com/slides_funcoes.pdf", createdAt: Date.now() },
-            { id: "mat2", disciplineId: "disc1", title: "Lista de Exercícios - Logaritmos", type: "lista", linkOrDesc: "exercicios_log.pdf - 10 questões", createdAt: Date.now() },
-            { id: "mat3", disciplineId: "disc2", title: "Resumo - Cinemática", type: "resumo", linkOrDesc: "Conceitos principais: MRU, MRUV, gráficos", createdAt: Date.now() },
-            { id: "mat4", disciplineId: "disc2", title: "Cronograma - Provas Física", type: "cronograma", linkOrDesc: "Semana 1: movimento uniforme, Semana 2: forças", createdAt: Date.now() },
-            { id: "mat5", disciplineId: "disc3", title: "Atividade - Tabela Periódica", type: "atividade", linkOrDesc: "Completar com famílias e grupos", createdAt: Date.now() },
-            { id: "mat6", disciplineId: "disc4", title: "Slides - Ecologia", type: "slides", linkOrDesc: "Slides sobre cadeias alimentares", createdAt: Date.now() },
-            { id: "mat7", disciplineId: "disc3", title: "Lista de Exercícios - Estequiometria", type: "lista", linkOrDesc: "20 questões com gabarito", createdAt: Date.now() }
-        ];
-    }
+function getAuthHeader() {
+    const token = localStorage.getItem('token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
 
-    // Grupos
-    const storedGroups = localStorage.getItem(STORAGE_KEYS.groups);
-    if (storedGroups) {
-        groups = JSON.parse(storedGroups);
-    } else {
-        groups = [
-            { id: "grupo1", name: "Grupo A" },
-            { id: "grupo2", name: "Grupo B" },
-            { id: "grupo3", name: "Grupo C" }
-        ];
-    }
-
-    // Mensagens
-    const storedMsg = localStorage.getItem(STORAGE_KEYS.messages);
-    if (storedMsg) {
-        messages = JSON.parse(storedMsg);
-    } else {
-        messages = {};
-        groups.forEach(g => {
-            messages[g.id] = [
-                { id: `msg_${g.id}_1`, userId: "admin", username: "Admin", text: `Bem‑vindo ao ${g.name}!`, timestamp: Date.now() }
-            ];
+// ==================== AUTENTICAÇÃO ====================
+async function login(email, password) {
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
         });
-    }
-
-    // Usuários
-    const storedUsers = localStorage.getItem(STORAGE_KEYS.users);
-    if (storedUsers) {
-        users = JSON.parse(storedUsers);
-    } else {
-        users = [
-            { id: "admin", username: ADMIN_USERNAME, password: ADMIN_PASSWORD, role: "admin", groupId: null }
-        ];
-    }
-
-    if (!disciplines.length) disciplines = [{ id: "disc_default", name: "Geral" }];
-    if (!currentDisciplineId && disciplines.length) currentDisciplineId = disciplines[0].id;
-    if (!currentGroupId && groups.length) currentGroupId = groups[0].id;
-}
-
-function login(username, password) {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) {
-        currentUser = user;
-        sessionStorage.setItem('currentUser', JSON.stringify({ id: user.id, username: user.username, role: user.role, groupId: user.groupId }));
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        localStorage.setItem('token', data.token);
+        currentUser = data.user;
         renderDashboard();
         return true;
+    } catch (err) {
+        alert('Erro: ' + err.message);
+        return false;
     }
-    return false;
 }
 
 function logout() {
+    localStorage.removeItem('token');
     currentUser = null;
-    sessionStorage.removeItem('currentUser');
-    removeAllModals();
+    if (messagesPollInterval) clearInterval(messagesPollInterval);
     renderLogin();
 }
 
+// ==================== RENDERIZAÇÃO ====================
 function renderLogin() {
     const app = document.getElementById('app');
     app.innerHTML = `
         <div class="login-container">
             <h2><i class="fas fa-graduation-cap"></i> StudyHub</h2>
             <p>Entre com suas credenciais</p>
-            <input type="text" id="loginUsername" placeholder="Usuário">
+            <input type="email" id="loginEmail" placeholder="E-mail">
             <input type="password" id="loginPassword" placeholder="Senha">
             <button id="loginBtn" class="btn-primary">Entrar</button>
             <div id="loginError" class="error-msg"></div>
@@ -135,59 +67,63 @@ function renderLogin() {
         </div>
     `;
     document.getElementById('loginBtn').addEventListener('click', () => {
-        const username = document.getElementById('loginUsername').value;
+        const email = document.getElementById('loginEmail').value;
         const password = document.getElementById('loginPassword').value;
-        if (login(username, password)) {
-            // sucesso
-        } else {
-            document.getElementById('loginError').innerText = 'Usuário ou senha inválidos';
-        }
+        login(email, password);
     });
 }
 
-function renderDashboard() {
-    // Filtrar grupos: admin vê todos; não‑admin vê apenas seu grupo (se tiver)
-    let userGroups = groups;
-    if (currentUser.role !== 'admin' && currentUser.groupId) {
-        userGroups = groups.filter(g => g.id === currentUser.groupId);
+async function renderDashboard() {
+    // Carregar disciplinas
+    const disciplines = await fetchAPI('/api/disciplines');
+    if (!disciplines || disciplines.length === 0) {
+        if (currentUser.role === 'admin') {
+            // criar disciplinas padrão
+            for (const name of ['Matemática', 'Física', 'Química', 'Biologia']) {
+                await fetchAPI('/api/disciplines', { method: 'POST', body: JSON.stringify({ name }) });
+            }
+            return renderDashboard();
+        }
     }
-    // Se não tiver grupo, mostrar mensagem (mas admin deve atribuir)
-    if (userGroups.length === 0) {
-        const app = document.getElementById('app');
-        app.innerHTML = `
-            <div class="app-container">
-                <div class="top-bar">
-                    <div class="logo">
-                        <h1><i class="fas fa-graduation-cap"></i> StudyHub</h1>
-                        <p>Olá, ${currentUser.username}</p>
+    if (!currentDisciplineId && disciplines?.length) currentDisciplineId = disciplines[0].id;
+
+    // Carregar grupos
+    const groups = await fetchAPI('/api/groups');
+    if (!groups || groups.length === 0) {
+        if (currentUser.role === 'admin') {
+            await fetchAPI('/api/groups', { method: 'POST', body: JSON.stringify({ name: 'Geral' }) });
+            return renderDashboard();
+        } else {
+            // mostrar mensagem de sem grupo
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="app-container">
+                    <div class="top-bar">
+                        <div class="logo"><h1>StudyHub</h1><p>Olá, ${currentUser.name}</p></div>
+                        <div class="admin-area"><button id="logoutBtn">Sair</button></div>
                     </div>
-                    <div class="admin-area">
-                        <button id="logoutBtn" class="btn-outline">Sair</button>
+                    <div style="text-align:center; padding:40px;">
+                        <i class="fas fa-users-slash" style="font-size:48px;"></i>
+                        <h3>Você ainda não foi atribuído a nenhum grupo.</h3>
+                        <p>Entre em contato com o administrador.</p>
                     </div>
                 </div>
-                <div style="text-align:center; padding:40px;">
-                    <i class="fas fa-users-slash" style="font-size:48px;"></i>
-                    <h3>Você ainda não foi atribuído a nenhum grupo.</h3>
-                    <p>Entre em contato com o administrador para que ele defina seu grupo.</p>
-                </div>
-            </div>
-        `;
-        document.getElementById('logoutBtn').addEventListener('click', logout);
-        return;
+            `;
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            return;
+        }
     }
 
-    // Se o grupo atual não estiver nos grupos permitidos, escolher o primeiro
-    if (!userGroups.find(g => g.id === currentGroupId)) {
-        currentGroupId = userGroups[0].id;
-    }
+    if (!currentGroupId && groups?.length) currentGroupId = groups[0].id;
 
+    // Montar HTML
     const app = document.getElementById('app');
     app.innerHTML = `
         <div class="app-container">
             <div class="top-bar">
                 <div class="logo">
                     <h1><i class="fas fa-graduation-cap"></i> StudyHub</h1>
-                    <p>Olá, ${currentUser.username} (${currentUser.role === 'admin' ? 'Admin' : 'Membro'})</p>
+                    <p>Olá, ${currentUser.name} (${currentUser.role === 'admin' ? 'Admin' : 'Membro'})</p>
                 </div>
                 <div class="admin-area">
                     ${currentUser.role === 'admin' ? '<button id="adminPanelBtn" class="btn-outline"><i class="fas fa-cog"></i> Admin</button>' : ''}
@@ -213,14 +149,14 @@ function renderDashboard() {
                     </div>
                 </div>
             </div>
-            <footer>Administradores podem postar materiais e gerenciar usuários/grupos. Chat com nome do usuário logado.</footer>
+            <footer>Administradores podem postar materiais e gerenciar usuários/grupos. Chat em tempo real (polling).</footer>
         </div>
     `;
 
-    renderDisciplines();
+    renderDisciplines(disciplines);
     renderMaterials();
-    renderChatGroups(userGroups);
-    renderChatMessages();
+    renderChatGroups(groups);
+    startChatPolling(); // atualiza mensagens a cada 2 segundos
 
     if (currentUser.role === 'admin') {
         const formDiv = document.getElementById('adminMaterialForm');
@@ -260,7 +196,7 @@ function renderDashboard() {
             </div>
         `;
         const discSelect = document.getElementById('adminDiscSelect');
-        if (discSelect) {
+        if (discSelect && disciplines) {
             discSelect.innerHTML = disciplines.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
             discSelect.value = currentDisciplineId;
         }
@@ -286,8 +222,23 @@ function renderDashboard() {
     });
 }
 
+// ==================== FUNÇÕES DE API ====================
+async function fetchAPI(url, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+        ...options.headers
+    };
+    const res = await fetch(`${API_BASE_URL}${url}`, { ...options, headers });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro na requisição');
+    }
+    return res.json();
+}
+
 // ==================== MATERIAIS ====================
-function renderDisciplines() {
+function renderDisciplines(disciplines) {
     const container = document.getElementById('disciplinesTabs');
     if (!container) return;
     container.innerHTML = '';
@@ -315,207 +266,217 @@ function renderDisciplines() {
     }
 }
 
-function renderMaterials() {
+async function renderMaterials() {
     const container = document.getElementById('materialsContainer');
     if (!container) return;
-    const filtered = materials.filter(m => m.disciplineId === currentDisciplineId);
-    if (filtered.length === 0) {
-        container.innerHTML = `<div style="text-align:center;padding:40px;">📭 Nenhum material ainda. ${currentUser.role === 'admin' ? 'Use o formulário admin para adicionar.' : 'Aguarde conteúdos dos admins.'}</div>`;
-        return;
-    }
-    container.innerHTML = '';
-    filtered.sort((a,b)=>b.createdAt - a.createdAt);
-    filtered.forEach(mat => {
-        const typeMap = { slides:'📽️ Slides', resumo:'📄 Resumo', cronograma:'📅 Cronograma', lista:'📝 Lista', atividade:'✍️ Atividade' };
-        const typeLabel = typeMap[mat.type] || mat.type;
-        const card = document.createElement('div');
-        card.className = 'material-card';
+    try {
+        const materials = await fetchAPI(`/api/materials?discipline_id=${currentDisciplineId}`);
+        if (!materials || materials.length === 0) {
+            container.innerHTML = `<div style="text-align:center;padding:40px;">📭 Nenhum material ainda. ${currentUser.role === 'admin' ? 'Use o formulário admin para adicionar.' : 'Aguarde conteúdos dos admins.'}</div>`;
+            return;
+        }
+        container.innerHTML = '';
+        for (const mat of materials) {
+            const typeMap = { slides:'📽️ Slides', resumo:'📄 Resumo', cronograma:'📅 Cronograma', lista:'📝 Lista', atividade:'✍️ Atividade' };
+            const typeLabel = typeMap[mat.type] || mat.type;
+            const card = document.createElement('div');
+            card.className = 'material-card';
 
-        let contentHtml = '';
-        if (mat.linkOrDesc) {
-            if (mat.linkOrDesc.startsWith('http://') || mat.linkOrDesc.startsWith('https://')) {
-                contentHtml += `<div class="material-desc"><a href="${mat.linkOrDesc}" target="_blank">🔗 ${escapeHtml(mat.linkOrDesc)}</a></div>`;
-            } else {
-                contentHtml += `<div class="material-desc">${escapeHtml(mat.linkOrDesc)}</div>`;
+            let contentHtml = '';
+            if (mat.description) {
+                if (mat.description.startsWith('http://') || mat.description.startsWith('https://')) {
+                    contentHtml += `<div class="material-desc"><a href="${mat.description}" target="_blank">🔗 ${escapeHtml(mat.description)}</a></div>`;
+                } else {
+                    contentHtml += `<div class="material-desc">${escapeHtml(mat.description)}</div>`;
+                }
+            }
+            if (mat.file_url) {
+                const ext = mat.file_name.split('.').pop().toLowerCase();
+                let icon = '📄';
+                if (ext === 'pdf') icon = '📑';
+                else if (['jpg','jpeg','png','gif','webp'].includes(ext)) icon = '🖼️';
+                else if (ext === 'doc' || ext === 'docx') icon = '📝';
+                else if (ext === 'xls' || ext === 'xlsx') icon = '📊';
+                contentHtml += `
+                    <div class="material-desc">
+                        <a href="${mat.file_url}" download="${mat.file_name}" class="file-download">
+                            <i class="fas fa-download"></i> ${icon} ${escapeHtml(mat.file_name)}
+                        </a>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div class="material-header">
+                    <span class="material-title">${escapeHtml(mat.title)}</span>
+                    <span class="badge-type">${typeLabel}</span>
+                </div>
+                ${contentHtml}
+                ${currentUser.role === 'admin' ? `<div class="material-actions">
+                    <button class="btn-outline edit-mat-btn" data-id="${mat.id}"><i class="fas fa-edit"></i> Editar</button>
+                    <button class="btn-danger delete-mat-btn" data-id="${mat.id}"><i class="fas fa-trash"></i> Excluir</button>
+                </div>` : ''}
+            `;
+            container.appendChild(card);
+            if (currentUser.role === 'admin') {
+                card.querySelector('.edit-mat-btn')?.addEventListener('click', (e) => { e.stopPropagation(); editMaterial(mat.id); });
+                card.querySelector('.delete-mat-btn')?.addEventListener('click', (e) => { e.stopPropagation(); deleteMaterial(mat.id); });
             }
         }
-        if (mat.fileData) {
-            const ext = mat.fileName.split('.').pop().toLowerCase();
-            let icon = '📄';
-            if (ext === 'pdf') icon = '📑';
-            else if (['jpg','jpeg','png','gif','webp'].includes(ext)) icon = '🖼️';
-            else if (ext === 'doc' || ext === 'docx') icon = '📝';
-            else if (ext === 'xls' || ext === 'xlsx') icon = '📊';
-            contentHtml += `
-                <div class="material-desc">
-                    <a href="${mat.fileData}" download="${mat.fileName}" class="file-download">
-                        <i class="fas fa-download"></i> ${icon} ${escapeHtml(mat.fileName)}
-                    </a>
-                    ${mat.fileType?.startsWith('image/') ? `<br><img src="${mat.fileData}" style="max-width:100%; max-height:150px; margin-top:8px; border-radius:12px;" alt="pré-visualização">` : ''}
-                </div>
-            `;
-        }
-
-        card.innerHTML = `
-            <div class="material-header">
-                <span class="material-title">${escapeHtml(mat.title)}</span>
-                <span class="badge-type">${typeLabel}</span>
-            </div>
-            ${contentHtml}
-            ${currentUser.role === 'admin' ? `<div class="material-actions">
-                <button class="btn-outline edit-mat-btn" data-id="${mat.id}"><i class="fas fa-edit"></i> Editar</button>
-                <button class="btn-danger delete-mat-btn" data-id="${mat.id}"><i class="fas fa-trash"></i> Excluir</button>
-            </div>` : ''}
-        `;
-        container.appendChild(card);
-        if (currentUser.role === 'admin') {
-            card.querySelector('.edit-mat-btn')?.addEventListener('click', (e) => { e.stopPropagation(); editMaterial(mat.id); });
-            card.querySelector('.delete-mat-btn')?.addEventListener('click', (e) => { e.stopPropagation(); deleteMaterial(mat.id); });
-        }
-    });
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = '<div style="text-align:center;padding:40px;">Erro ao carregar materiais.</div>';
+    }
 }
 
-function addNewMaterial() {
+async function addNewMaterial() {
     const discId = document.getElementById('adminDiscSelect')?.value;
     const type = document.getElementById('adminTypeSelect')?.value;
     const title = document.getElementById('adminTitle')?.value.trim();
-    const linkDesc = document.getElementById('adminLinkDesc')?.value.trim();
+    const description = document.getElementById('adminLinkDesc')?.value.trim();
     const fileInput = document.getElementById('adminFileInput');
-
     if (!title) { alert("Digite um título"); return; }
     if (!discId) return;
 
-    const newId = "mat_" + Date.now() + "_" + Math.random();
-    const newMaterial = {
-        id: newId,
-        disciplineId: discId,
-        title: title,
-        type: type,
-        linkOrDesc: linkDesc || "",
-        createdAt: Date.now()
-    };
-
+    let fileUrl = null, fileName = null;
     if (fileInput && fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        const maxSize = 5 * 1024 * 1024;
-        if (file.size > maxSize) {
-            alert("Arquivo muito grande (máx. 5MB).");
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_BASE_URL}/api/upload`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert('Erro ao enviar arquivo: ' + data.error);
             return;
         }
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            newMaterial.fileData = e.target.result;
-            newMaterial.fileName = file.name;
-            newMaterial.fileType = file.type;
-            materials.push(newMaterial);
-            saveAll();
-            renderMaterials();
-            fileInput.value = "";
-            document.getElementById('fileSelectedName').innerText = "Nenhum arquivo selecionado";
-        };
-        reader.readAsDataURL(file);
-    } else {
-        materials.push(newMaterial);
-        saveAll();
+        fileUrl = data.fileUrl;
+        fileName = data.fileName;
+    }
+
+    try {
+        await fetchAPI('/api/materials', {
+            method: 'POST',
+            body: JSON.stringify({ discipline_id: discId, type, title, description, file_url: fileUrl, file_name: fileName })
+        });
+        alert('Material publicado!');
         renderMaterials();
+        document.getElementById('adminTitle').value = '';
+        document.getElementById('adminLinkDesc').value = '';
+        if (fileInput) fileInput.value = '';
+        document.getElementById('fileSelectedName').innerText = "Nenhum arquivo selecionado";
+    } catch (err) {
+        alert('Erro: ' + err.message);
     }
 }
 
-function addNewDiscipline() {
+async function addNewDiscipline() {
     let name = prompt("Nome da nova disciplina:");
     if (!name || name.trim() === "") return;
-    const newId = "disc_" + Date.now();
-    disciplines.push({ id: newId, name: name.trim() });
-    saveAll();
-    currentDisciplineId = newId;
-    renderDisciplines();
-    renderMaterials();
-    refreshAdminDiscSelect();
-}
-
-function refreshAdminDiscSelect() {
-    const discSelect = document.getElementById('adminDiscSelect');
-    if (discSelect && currentUser.role === 'admin') {
-        discSelect.innerHTML = disciplines.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-        discSelect.value = currentDisciplineId;
+    try {
+        await fetchAPI('/api/disciplines', { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
+        renderDashboard();
+    } catch (err) {
+        alert('Erro: ' + err.message);
     }
 }
 
-function deleteCurrentDiscipline() {
+async function deleteCurrentDiscipline() {
     if (disciplines.length <= 1) { alert("É necessário manter pelo menos uma disciplina."); return; }
-    const confirmDel = confirm(`Tem certeza que deseja excluir a disciplina "${disciplines.find(d=>d.id===currentDisciplineId)?.name}" e TODOS os materiais associados?`);
-    if (!confirmDel) return;
-    materials = materials.filter(m => m.disciplineId !== currentDisciplineId);
-    disciplines = disciplines.filter(d => d.id !== currentDisciplineId);
-    if (disciplines.length) currentDisciplineId = disciplines[0].id;
-    saveAll();
-    renderDisciplines();
-    renderMaterials();
-    refreshAdminDiscSelect();
+    const discipline = disciplines.find(d => d.id === currentDisciplineId);
+    if (!discipline) return;
+    if (!confirm(`Excluir a disciplina "${discipline.name}" e todos os materiais associados?`)) return;
+    try {
+        await fetchAPI(`/api/disciplines/${currentDisciplineId}`, { method: 'DELETE' });
+        renderDashboard();
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
 }
 
-function editMaterial(matId) {
+async function editMaterial(matId) {
+    // Obter material atual
+    const materials = await fetchAPI(`/api/materials?discipline_id=${currentDisciplineId}`);
     const material = materials.find(m => m.id === matId);
     if (!material) return;
     const newTitle = prompt("Editar título:", material.title);
     if (newTitle === null) return;
-    const newDesc = prompt("Editar link/descrição:", material.linkOrDesc);
+    const newDesc = prompt("Editar descrição/link:", material.description);
     if (newDesc === null) return;
     const newType = prompt("Novo tipo (slides, resumo, cronograma, lista, atividade):", material.type);
     if (newType && ['slides','resumo','cronograma','lista','atividade'].includes(newType.toLowerCase())) {
         material.type = newType.toLowerCase();
     }
-    material.title = newTitle.trim() || material.title;
-    material.linkOrDesc = newDesc.trim() || material.linkOrDesc;
-
+    const updates = {
+        title: newTitle.trim(),
+        description: newDesc.trim() || null,
+        type: material.type
+    };
     if (confirm("Deseja alterar o arquivo anexado? (Cancelar mantém o atual)")) {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
-        fileInput.onchange = (e) => {
+        fileInput.onchange = async (e) => {
             const file = fileInput.files[0];
+            let fileUrl = material.file_url;
+            let fileName = material.file_name;
             if (file) {
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    material.fileData = ev.target.result;
-                    material.fileName = file.name;
-                    material.fileType = file.type;
-                    saveAll();
-                    renderMaterials();
-                };
-                reader.readAsDataURL(file);
-            } else {
-                saveAll();
-                renderMaterials();
+                const formData = new FormData();
+                formData.append('file', file);
+                const token = localStorage.getItem('token');
+                const res = await fetch(`${API_BASE_URL}/api/upload`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    fileUrl = data.fileUrl;
+                    fileName = data.fileName;
+                } else {
+                    alert('Erro ao enviar novo arquivo: ' + data.error);
+                    return;
+                }
             }
+            updates.file_url = fileUrl;
+            updates.file_name = fileName;
+            try {
+                await fetchAPI(`/api/materials/${matId}`, { method: 'PUT', body: JSON.stringify(updates) });
+                renderMaterials();
+            } catch (err) { alert(err.message); }
         };
         fileInput.click();
     } else {
-        saveAll();
-        renderMaterials();
+        try {
+            await fetchAPI(`/api/materials/${matId}`, { method: 'PUT', body: JSON.stringify(updates) });
+            renderMaterials();
+        } catch (err) { alert(err.message); }
     }
 }
 
-function deleteMaterial(matId) {
-    if (confirm("Remover este material?")) {
-        materials = materials.filter(m => m.id !== matId);
-        saveAll();
+async function deleteMaterial(matId) {
+    if (!confirm("Remover este material?")) return;
+    try {
+        await fetchAPI(`/api/materials/${matId}`, { method: 'DELETE' });
         renderMaterials();
-    }
+    } catch (err) { alert(err.message); }
 }
 
 // ==================== CHAT ====================
-function renderChatGroups(groupsToShow) {
+function renderChatGroups(groups) {
     const container = document.getElementById('chatGroupsContainer');
     if (!container) return;
     container.innerHTML = '';
-    groupsToShow.forEach(group => {
+    groups.forEach(group => {
         const btn = document.createElement('button');
         btn.className = `group-tab ${currentGroupId === group.id ? 'active-group' : ''}`;
         btn.innerText = group.name;
         btn.addEventListener('click', () => {
             currentGroupId = group.id;
             renderChatMessages();
-            renderChatGroups(groupsToShow);
+            renderChatGroups(groups);
         });
         container.appendChild(btn);
     });
@@ -523,82 +484,80 @@ function renderChatGroups(groupsToShow) {
         const addGroupBtn = document.createElement('button');
         addGroupBtn.innerHTML = '<i class="fas fa-plus"></i> Novo grupo';
         addGroupBtn.className = 'btn-outline';
-        addGroupBtn.addEventListener('click', () => {
+        addGroupBtn.addEventListener('click', async () => {
             const name = prompt('Nome do novo grupo:');
             if (name && name.trim()) {
-                const newId = 'group_' + Date.now();
-                groups.push({ id: newId, name: name.trim() });
-                messages[newId] = [];
-                saveAll();
-                renderDashboard();
+                try {
+                    await fetchAPI('/api/groups', { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
+                    renderDashboard();
+                } catch (err) { alert(err.message); }
             }
         });
         container.appendChild(addGroupBtn);
     }
 }
 
-function renderChatMessages() {
+let lastMessageCount = 0;
+async function startChatPolling() {
+    if (messagesPollInterval) clearInterval(messagesPollInterval);
+    messagesPollInterval = setInterval(async () => {
+        if (!currentGroupId) return;
+        try {
+            const messages = await fetchAPI(`/api/messages?group_id=${currentGroupId}`);
+            renderChatMessages(messages);
+        } catch (err) { console.error(err); }
+    }, 2000);
+}
+
+function renderChatMessages(messages) {
     const msgContainer = document.getElementById('chatMessagesArea');
     if (!msgContainer) return;
-    const currentMessages = messages[currentGroupId] || [];
-    if (currentMessages.length === 0) {
+    if (!messages || messages.length === 0) {
         msgContainer.innerHTML = '<div class="empty-msg">💬 Nenhuma mensagem ainda. Seja o primeiro a escrever!</div>';
         return;
     }
     msgContainer.innerHTML = '';
-    currentMessages.forEach(msg => {
-        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    messages.forEach(msg => {
+        const timeStr = new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message';
-        const canDelete = (currentUser.role === 'admin') || (msg.userId === currentUser.id);
+        const canDelete = (currentUser.role === 'admin') || (msg.author_id === currentUser.id);
         msgDiv.innerHTML = `
-            <div class="msg-author">${escapeHtml(msg.username)}</div>
+            <div class="msg-author">${escapeHtml(msg.author_name)}</div>
             <div class="msg-text">${escapeHtml(msg.text)}</div>
             <div class="msg-time">${timeStr}</div>
             ${canDelete ? `<button class="delete-msg" data-id="${msg.id}"><i class="fas fa-trash-alt"></i></button>` : ''}
         `;
         if (canDelete) {
-            msgDiv.querySelector('.delete-msg').addEventListener('click', () => {
-                if (confirm('Apagar esta mensagem?')) {
-                    deleteMessage(msg.id);
-                }
-            });
+            msgDiv.querySelector('.delete-msg').addEventListener('click', () => deleteMessage(msg.id));
         }
         msgContainer.appendChild(msgDiv);
     });
     msgContainer.scrollTop = msgContainer.scrollHeight;
 }
 
-function sendChatMessage() {
+async function sendChatMessage() {
     const msgInput = document.getElementById('chatMessageInput');
     const text = msgInput.value.trim();
-    if (text === "") return;
-    const newMsg = {
-        id: Date.now() + "_" + Math.random(),
-        userId: currentUser.id,
-        username: currentUser.username,
-        text: text,
-        timestamp: Date.now()
-    };
-    if (!messages[currentGroupId]) messages[currentGroupId] = [];
-    messages[currentGroupId].push(newMsg);
-    saveAll();
-    msgInput.value = "";
-    renderChatMessages();
+    if (!text) return;
+    try {
+        await fetchAPI('/api/messages', {
+            method: 'POST',
+            body: JSON.stringify({ group_id: currentGroupId, text })
+        });
+        msgInput.value = '';
+    } catch (err) { alert('Erro ao enviar: ' + err.message); }
 }
 
-function deleteMessage(msgId) {
-    const groupMsgs = messages[currentGroupId];
-    const index = groupMsgs.findIndex(m => m.id === msgId);
-    if (index !== -1) {
-        groupMsgs.splice(index, 1);
-        saveAll();
-        renderChatMessages();
-    }
+async function deleteMessage(msgId) {
+    if (!confirm('Apagar esta mensagem?')) return;
+    try {
+        await fetchAPI(`/api/messages/${msgId}`, { method: 'DELETE' });
+    } catch (err) { alert(err.message); }
 }
 
 // ==================== ADMIN PANEL ====================
-function openAdminPanel() {
+async function openAdminPanel() {
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.innerHTML = `
@@ -622,168 +581,149 @@ function openAdminPanel() {
     `;
     document.body.appendChild(modal);
 
-    const userListUl = document.getElementById('userListUl');
-    function refreshUserList() {
-        userListUl.innerHTML = '';
-        users.forEach(user => {
-            const li = document.createElement('li');
-            const userGroup = groups.find(g => g.id === user.groupId);
-            li.innerHTML = `
-                <strong>${user.username}</strong> (${user.role})
-                <br>
-                <small>Grupo: 
-                    <select class="user-group-select" data-user-id="${user.id}">
-                        <option value="">Nenhum</option>
-                        ${groups.map(g => `<option value="${g.id}" ${user.groupId === g.id ? 'selected' : ''}>${g.name}</option>`).join('')}
-                    </select>
-                </small>
-            `;
-            if (user.username !== ADMIN_USERNAME) {
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Excluir';
-                deleteBtn.className = 'btn-danger';
-                deleteBtn.style.marginLeft = '8px';
-                deleteBtn.addEventListener('click', () => {
-                    if (confirm(`Excluir usuário ${user.username}?`)) {
-                        users = users.filter(u => u.id !== user.id);
-                        saveAll();
-                        refreshUserList();
-                    }
-                });
-                li.appendChild(deleteBtn);
-            }
-            userListUl.appendChild(li);
+    // Carregar usuários e grupos
+    const [users, groups] = await Promise.all([
+        fetchAPI('/api/users'),
+        fetchAPI('/api/groups')
+    ]);
 
-            const select = li.querySelector('.user-group-select');
-            select.addEventListener('change', (e) => {
-                const newGroupId = e.target.value || null;
-                user.groupId = newGroupId;
-                saveAll();
-                // Se o usuário logado for o próprio, atualizar currentUser
-                if (currentUser.id === user.id) {
-                    currentUser.groupId = newGroupId;
-                    sessionStorage.setItem('currentUser', JSON.stringify({ id: currentUser.id, username: currentUser.username, role: currentUser.role, groupId: currentUser.groupId }));
+    const userListUl = document.getElementById('userListUl');
+    userListUl.innerHTML = '';
+    for (const user of users) {
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <strong>${user.name}</strong> (${user.email}) - ${user.role}
+            <br>
+            <small>Grupo: 
+                <select class="user-group-select" data-user-id="${user.id}">
+                    <option value="">Nenhum</option>
+                    ${groups.map(g => `<option value="${g.id}" ${user.group_id === g.id ? 'selected' : ''}>${g.name}</option>`).join('')}
+                </select>
+            </small>
+        `;
+        if (user.role !== 'admin') {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Excluir';
+            deleteBtn.className = 'btn-danger';
+            deleteBtn.style.marginLeft = '8px';
+            deleteBtn.addEventListener('click', async () => {
+                if (confirm(`Excluir usuário ${user.email}?`)) {
+                    // Implementar exclusão de usuário (não implementado no backend ainda)
+                    alert('Funcionalidade em desenvolvimento');
                 }
-                alert('Grupo alterado!');
             });
+            li.appendChild(deleteBtn);
+        }
+        userListUl.appendChild(li);
+
+        const select = li.querySelector('.user-group-select');
+        select.addEventListener('change', async (e) => {
+            const newGroupId = e.target.value || null;
+            try {
+                await fetchAPI(`/api/users/${user.id}/group`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ group_id: newGroupId })
+                });
+                alert('Grupo alterado!');
+                openAdminPanel(); // recarrega
+            } catch (err) { alert(err.message); }
         });
     }
-    refreshUserList();
 
     const groupListUl = document.getElementById('groupListUl');
-    function refreshGroupList() {
-        groupListUl.innerHTML = '';
-        groups.forEach(group => {
-            const li = document.createElement('li');
-            li.textContent = group.name;
-            if (groups.length > 1) {
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Excluir';
-                deleteBtn.className = 'btn-danger';
-                deleteBtn.style.marginLeft = '8px';
-                deleteBtn.addEventListener('click', () => {
-                    if (confirm(`Excluir grupo "${group.name}"? Todas as mensagens serão apagadas.`)) {
-                        groups = groups.filter(g => g.id !== group.id);
-                        delete messages[group.id];
-                        // Remover referência nos usuários
-                        users.forEach(u => {
-                            if (u.groupId === group.id) u.groupId = null;
-                        });
-                        if (currentGroupId === group.id && groups.length) currentGroupId = groups[0].id;
-                        saveAll();
-                        refreshGroupList();
+    groupListUl.innerHTML = '';
+    groups.forEach(group => {
+        const li = document.createElement('li');
+        li.textContent = group.name;
+        if (groups.length > 1) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Excluir';
+            deleteBtn.className = 'btn-danger';
+            deleteBtn.style.marginLeft = '8px';
+            deleteBtn.addEventListener('click', async () => {
+                if (confirm(`Excluir grupo "${group.name}"?`)) {
+                    try {
+                        await fetchAPI(`/api/groups/${group.id}`, { method: 'DELETE' });
                         renderDashboard();
-                    }
-                });
-                li.appendChild(deleteBtn);
-            }
-            groupListUl.appendChild(li);
-        });
-    }
-    refreshGroupList();
+                        openAdminPanel();
+                    } catch (err) { alert(err.message); }
+                }
+            });
+            li.appendChild(deleteBtn);
+        }
+        groupListUl.appendChild(li);
+    });
 
-    document.getElementById('createUserBtn').addEventListener('click', () => {
-        const username = prompt('Nome de usuário:');
-        if (!username) return;
+    document.getElementById('createUserBtn').addEventListener('click', async () => {
+        const email = prompt('E-mail do novo usuário:');
+        if (!email) return;
+        const name = prompt('Nome completo:');
+        if (!name) return;
         const password = prompt('Senha:');
         if (!password) return;
-        if (users.find(u => u.username === username)) {
-            alert('Usuário já existe');
+        // Escolher grupo
+        if (!groups.length) {
+            alert('Crie um grupo primeiro.');
             return;
         }
-        const newId = 'user_' + Date.now();
-        users.push({ id: newId, username, password, role: 'member', groupId: null });
-        saveAll();
-        refreshUserList();
-        alert('Usuário criado com sucesso');
-    });
-
-    document.getElementById('resetPasswordBtn').addEventListener('click', () => {
-        const username = prompt('Nome do usuário para resetar senha:');
-        if (!username) return;
-        const user = users.find(u => u.username === username);
-        if (!user) {
-            alert('Usuário não encontrado');
+        const groupId = prompt(`Escolha o grupo (ID):\n${groups.map(g => `${g.id}: ${g.name}`).join('\n')}`);
+        if (!groupId) return;
+        const selectedGroup = groups.find(g => g.id === groupId);
+        if (!selectedGroup) {
+            alert('Grupo inválido.');
             return;
         }
-        const newPassword = prompt('Nova senha:');
-        if (!newPassword) return;
-        user.password = newPassword;
-        saveAll();
-        alert('Senha alterada');
+        try {
+            await fetchAPI('/api/users', {
+                method: 'POST',
+                body: JSON.stringify({ email, name, password, group_id: groupId })
+            });
+            alert('Usuário criado com sucesso!');
+            openAdminPanel(); // recarrega
+        } catch (err) { alert(err.message); }
     });
 
-    document.getElementById('createGroupBtn').addEventListener('click', () => {
+    document.getElementById('resetPasswordBtn').addEventListener('click', async () => {
+        alert('Para resetar senha, edite diretamente no banco ou implemente uma rota específica.');
+    });
+
+    document.getElementById('createGroupBtn').addEventListener('click', async () => {
         const name = prompt('Nome do novo grupo:');
         if (name && name.trim()) {
-            const newId = 'group_' + Date.now();
-            groups.push({ id: newId, name: name.trim() });
-            messages[newId] = [];
-            saveAll();
-            refreshGroupList();
-            renderDashboard();
+            try {
+                await fetchAPI('/api/groups', { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
+                renderDashboard();
+                openAdminPanel();
+            } catch (err) { alert(err.message); }
         }
     });
 
-    document.getElementById('deleteGroupBtn').addEventListener('click', () => {
+    document.getElementById('deleteGroupBtn').addEventListener('click', async () => {
         if (groups.length <= 1) {
             alert('Não é possível excluir o último grupo.');
             return;
         }
-        const groupToDelete = groups.find(g => g.id === currentGroupId);
-        if (!groupToDelete) return;
-        if (confirm(`Excluir grupo "${groupToDelete.name}"?`)) {
-            groups = groups.filter(g => g.id !== currentGroupId);
-            delete messages[currentGroupId];
-            users.forEach(u => {
-                if (u.groupId === currentGroupId) u.groupId = null;
-            });
-            if (groups.length) currentGroupId = groups[0].id;
-            saveAll();
-            refreshGroupList();
+        if (!confirm(`Excluir o grupo atual?`)) return;
+        try {
+            await fetchAPI(`/api/groups/${currentGroupId}`, { method: 'DELETE' });
             renderDashboard();
-        }
+            openAdminPanel();
+        } catch (err) { alert(err.message); }
     });
 
     document.getElementById('closeModalBtn').addEventListener('click', () => modal.remove());
 }
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
+// ==================== INICIALIZAÇÃO ====================
 function init() {
-    loadData();
-    const storedUser = sessionStorage.getItem('currentUser');
-    if (storedUser) {
-        currentUser = JSON.parse(storedUser);
-        renderDashboard();
+    const token = localStorage.getItem('token');
+    if (token) {
+        // Tentar decodificar token ou fazer uma requisição para verificar validade
+        // Por simplicidade, vamos carregar o dashboard e tratar erros
+        renderDashboard().catch(() => {
+            localStorage.removeItem('token');
+            renderLogin();
+        });
     } else {
         renderLogin();
     }
